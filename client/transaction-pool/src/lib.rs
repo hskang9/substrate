@@ -25,6 +25,8 @@ mod maintainer;
 pub mod error;
 #[cfg(test)]
 mod tests;
+#[cfg(any(feature = "test-helpers", test))]
+pub mod testing;
 
 pub use sc_transaction_graph as txpool;
 pub use crate::api::{FullChainApi, LightChainApi};
