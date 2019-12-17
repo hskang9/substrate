@@ -18,12 +18,15 @@
 use consensus_common::ImportedAux;
 use jsonrpc_core::{Error, ErrorCode};
 use jsonrpc_derive::rpc;
-use futures::channel::{
-	mpsc::{self, TrySendError},
-	oneshot,
+use futures::{
+	channel::{
+		mpsc::{self, SendError},
+		oneshot,
+	},
+	TryFutureExt,
+	SinkExt
 };
 use serde::{Deserialize, Serialize};
-use futures::TryFutureExt;
 
 type FutureResult<T> = Box<dyn jsonrpc_core::futures::Future<Item = T, Error = Error> + Send>;
 type Sender<T> = Option<oneshot::Sender<std::result::Result<T, crate::Error>>>;
@@ -66,7 +69,7 @@ pub trait ManualSealApi<Hash> {
 
 /// A struct that implements the [`ManualSealApi`].
 pub struct ManualSeal<Hash> {
-	import_block_channel: mpsc::UnboundedSender<EngineCommand<Hash>>,
+	import_block_channel: mpsc::Sender<EngineCommand<Hash>>,
 }
 
 /// return type of `engine_createBlock`
@@ -78,7 +81,7 @@ pub struct CreatedBlock<Hash> {
 
 impl<Hash> ManualSeal<Hash> {
 	/// Create new `ManualSeal` with the given reference to the client.
-	pub fn new(import_block_channel: mpsc::UnboundedSender<EngineCommand<Hash>>) -> Self {
+	pub fn new(import_block_channel: mpsc::Sender<EngineCommand<Hash>>) -> Self {
 		Self { import_block_channel }
 	}
 }
@@ -89,15 +92,16 @@ impl<Hash: Send + 'static> ManualSealApi<Hash> for ManualSeal<Hash> {
 		create_empty: bool,
 		parent_hash: Option<Hash>
 	) -> FutureResult<CreatedBlock<Hash>> {
-		let (sender, receiver) = oneshot::channel();
-		let result = self.import_block_channel.unbounded_send(
-			EngineCommand::SealNewBlock {
-				create_empty,
-				parent_hash,
-				sender: Some(sender),
-			}
-		);
-		let future = async {
+		let mut sink = self.import_block_channel.clone();
+		let future = async move {
+			let (sender, receiver) = oneshot::channel();
+			let result = sink.send(
+				EngineCommand::SealNewBlock {
+					create_empty,
+					parent_hash,
+					sender: Some(sender),
+				}
+			).await;
 			if let Err(e) = result {
 				return Err(map_error(e))
 			};
@@ -128,12 +132,12 @@ impl<Hash: Send + 'static> ManualSealApi<Hash> for ManualSeal<Hash> {
 	}
 
 	fn finalize_block(&self, hash: Hash) -> FutureResult<()> {
-		let (sender, receiver) = oneshot::channel();
-		let result = self.import_block_channel.unbounded_send(
-			EngineCommand::FinalizeBlock { hash, sender: Some(sender) }
-		);
-
-		let future = async {
+		let mut sink = self.import_block_channel.clone();
+		let future = async move {
+			let (sender, receiver) = oneshot::channel();
+			let result = sink.send(
+				EngineCommand::FinalizeBlock { hash, sender: Some(sender) }
+			).await;
 			if let Err(e) = result {
 				return Err(map_error(e))
 			};
@@ -164,7 +168,7 @@ impl<Hash: Send + 'static> ManualSealApi<Hash> for ManualSeal<Hash> {
 	}
 }
 
-fn map_error<H>(error: TrySendError<EngineCommand<H>>) -> Error {
+fn map_error(error: SendError) -> Error {
 	if error.is_disconnected() {
 		log::warn!("Received sealing request but Manual Sealing task has been dropped");
 	}

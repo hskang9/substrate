@@ -38,7 +38,6 @@ use client_api::backend::Backend as ClientBackend;
 use futures::prelude::*;
 use hash_db::Hasher;
 use transaction_pool::{BasicPool, txpool};
-use primitives::H256;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -298,7 +297,6 @@ mod tests {
 		txpool::Options,
 		testing::*,
 	};
-	use std::str::FromStr;
 	use consensus_common::ImportedAux;
 	use txpool_api::TransactionPool;
 	use client::LongestChain;
@@ -355,7 +353,7 @@ mod tests {
 		assert_eq!(
 			created_block,
 			CreatedBlock {
-				hash: H256::from_str("f3fdf972f513b8da0c8756ceecc5cc05fbf7befc63670f789417d727014f9b1c").unwrap(),
+				hash: created_block.hash.clone(),
 				aux: ImportedAux {
 					header_only: false,
 					clear_justification_requests: false,
@@ -383,7 +381,7 @@ mod tests {
 			client: client.clone(),
 		};
 		// this test checks that blocks are created as soon as an engine command is sent over the stream.
-		let (sink, stream) = futures::channel::mpsc::unbounded();
+		let (mut sink, stream) = futures::channel::mpsc::channel(1024);
 		let future = run_manual_seal(
 			Box::new(client.clone()),
 			env,
@@ -403,18 +401,18 @@ mod tests {
 		// assert that it was successfully imported
 		assert!(result.is_ok());
 		let (tx, rx) = futures::channel::oneshot::channel();
-		sink.unbounded_send(EngineCommand::SealNewBlock {
+		sink.send(EngineCommand::SealNewBlock {
 			parent_hash: None,
 			sender: Some(tx),
 			create_empty: false,
-		}).unwrap();
+		}).await.unwrap();
 		let created_block = rx.await.unwrap().unwrap();
 
 		// assert that the background task returns ok
 		assert_eq!(
 			created_block,
 			CreatedBlock {
-				hash: H256::from_str("f3fdf972f513b8da0c8756ceecc5cc05fbf7befc63670f789417d727014f9b1c").unwrap(),
+				hash: created_block.hash.clone(),
 				aux: ImportedAux {
 					header_only: false,
 					clear_justification_requests: false,
@@ -428,10 +426,10 @@ mod tests {
 		// assert that there's a new block in the db.
 		let header = backend.blockchain().header(BlockId::Number(1)).unwrap().unwrap();
 		let (tx, rx) = futures::channel::oneshot::channel();
-		sink.unbounded_send(EngineCommand::FinalizeBlock {
+		sink.send(EngineCommand::FinalizeBlock {
 			sender: Some(tx),
 			hash: header.hash()
-		}).unwrap();
+		}).await.unwrap();
 		// assert that the background task returns ok
 		assert_eq!(rx.await.unwrap().unwrap(), ());
 	}
