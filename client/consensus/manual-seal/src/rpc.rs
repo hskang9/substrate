@@ -114,7 +114,7 @@ impl<Hash: Send + 'static> ManualSealApi<Hash> for ManualSeal<Hash> {
 					Err(Error {
 						code: ErrorCode::ServerError(500),
 						message: format!("{}", e),
-						data: None
+						data: None,
 					})
 				}
 				// channel has been dropped
@@ -122,7 +122,7 @@ impl<Hash: Send + 'static> ManualSealApi<Hash> for ManualSeal<Hash> {
 					Err(Error {
 						code: ErrorCode::ServerError(500),
 						message: "Server is shutting down".into(),
-						data: None
+						data: None,
 					})
 				}
 			}

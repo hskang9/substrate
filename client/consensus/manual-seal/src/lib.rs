@@ -145,7 +145,7 @@ pub async fn run_manual_seal<B, CB, E, A, C, S, H>(
 			EngineCommand::SealNewBlock {
 				create_empty,
 				parent_hash,
-				sender
+				sender,
 			} => {
 				if pool.status().ready == 0 && !create_empty {
 					rpc::send_result(sender, Err(Error::EmptyTransactionPool));
@@ -360,7 +360,7 @@ mod tests {
 					needs_justification: false,
 					bad_justification: false,
 					needs_finality_proof: false,
-					is_new_best: true
+					is_new_best: true,
 				}
 			}
 		);
@@ -419,7 +419,7 @@ mod tests {
 					needs_justification: false,
 					bad_justification: false,
 					needs_finality_proof: false,
-					is_new_best: true
+					is_new_best: true,
 				}
 			}
 		);
