@@ -27,18 +27,22 @@ use futures::{
 	SinkExt
 };
 use serde::{Deserialize, Serialize};
+use sp_runtime::Justification;
 
 type FutureResult<T> = Box<dyn jsonrpc_core::futures::Future<Item = T, Error = Error> + Send>;
-type Sender<T> = Option<oneshot::Sender<std::result::Result<T, crate::Error>>>;
+pub type Sender<T> = Option<oneshot::Sender<std::result::Result<T, crate::Error>>>;
 
 /// message sent by rpc to the background authorship task
 pub enum EngineCommand<Hash> {
 	/// Tells the engine to propose a new block
 	///
 	/// if create_empty == true, it will create empty blocks if there are no transactions
-	/// in the transaction pool
+	/// in the transaction pool.
+	///
+	/// if finalize == true, the block will be instantly finalized.
 	SealNewBlock {
 		create_empty: bool,
+		finalize: bool,
 		parent_hash: Option<Hash>,
 		sender: Sender<CreatedBlock<Hash>>,
 	},
@@ -46,24 +50,28 @@ pub enum EngineCommand<Hash> {
 	FinalizeBlock {
 		hash: Hash,
 		sender: Sender<()>,
+		justification: Option<Justification>
 	}
 }
 
+/// RPC trait that provides methods for interacting with the manual-seal authorship task over rpc.
 #[rpc]
 pub trait ManualSealApi<Hash> {
-	/// Instructs the manual-seal background task to create a new block
+	/// Instructs the manual-seal authorship task to create a new block
 	#[rpc(name = "engine_createBlock")]
 	fn create_block(
 		&self,
 		create_empty: bool,
+		finalize: bool,
 		parent_hash: Option<Hash>
 	) -> FutureResult<CreatedBlock<Hash>>;
 
-	/// Instructs the manual-seal background task to finalize a block
+	/// Instructs the manual-seal authorship task to finalize a block
 	#[rpc(name = "engine_finalizeBlock")]
 	fn finalize_block(
 		&self,
 		hash: Hash,
+		justification: Option<Justification>
 	) -> FutureResult<()>;
 }
 
@@ -75,7 +83,9 @@ pub struct ManualSeal<Hash> {
 /// return type of `engine_createBlock`
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct CreatedBlock<Hash> {
+	/// hash of the created block.
 	pub hash: Hash,
+	/// some extra details about the import operation
 	pub aux: ImportedAux
 }
 
@@ -90,6 +100,7 @@ impl<Hash: Send + 'static> ManualSealApi<Hash> for ManualSeal<Hash> {
 	fn create_block(
 		&self,
 		create_empty: bool,
+		finalize: bool,
 		parent_hash: Option<Hash>
 	) -> FutureResult<CreatedBlock<Hash>> {
 		let mut sink = self.import_block_channel.clone();
@@ -98,13 +109,12 @@ impl<Hash: Send + 'static> ManualSealApi<Hash> for ManualSeal<Hash> {
 			let result = sink.send(
 				EngineCommand::SealNewBlock {
 					create_empty,
+					finalize,
 					parent_hash,
 					sender: Some(sender),
 				}
 			).await;
-			if let Err(e) = result {
-				return Err(map_error(e))
-			};
+			result.map_err(map_error)?;
 
 			match receiver.await {
 				// all good
@@ -121,8 +131,9 @@ impl<Hash: Send + 'static> ManualSealApi<Hash> for ManualSeal<Hash> {
 				Err(_) => {
 					Err(Error {
 						code: ErrorCode::ServerError(500),
-						message: "Server is shutting down".into(),
-						data: None,
+						message: "Consensus process is terminating".into(),
+						data: None,erver is shutting down
+erver is shutting down
 					})
 				}
 			}
@@ -131,16 +142,14 @@ impl<Hash: Send + 'static> ManualSealApi<Hash> for ManualSeal<Hash> {
 		Box::new(Box::pin(future).compat())
 	}
 
-	fn finalize_block(&self, hash: Hash) -> FutureResult<()> {
+	fn finalize_block(&self, hash: Hash, justification: Option<Justification>) -> FutureResult<()> {
 		let mut sink = self.import_block_channel.clone();
 		let future = async move {
 			let (sender, receiver) = oneshot::channel();
 			let result = sink.send(
-				EngineCommand::FinalizeBlock { hash, sender: Some(sender) }
+				EngineCommand::FinalizeBlock { hash, sender: Some(sender), justification }
 			).await;
-			if let Err(e) = result {
-				return Err(map_error(e))
-			};
+			result.map_err(map_error)?;
 
 			match receiver.await {
 				// all good
@@ -157,7 +166,7 @@ impl<Hash: Send + 'static> ManualSealApi<Hash> for ManualSeal<Hash> {
 				Err(_) => {
 					Err(Error {
 						code: ErrorCode::ServerError(500),
-						message: "Server is shutting down".into(),
+						message: "Consensus process is terminating".into(),
 						data: None
 					})
 				}
@@ -175,7 +184,7 @@ fn map_error(error: SendError) -> Error {
 
 	Error {
 		code: ErrorCode::ServerError(500),
-		message: "Server is shutting down".into(),
+		message: "Consensus process is terminating".into(),
 		data: None
 	}
 }

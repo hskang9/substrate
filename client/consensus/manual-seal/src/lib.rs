@@ -28,23 +28,21 @@ use consensus_common::{
 		BoxBlockImport,
 	},
 };
-use sp_runtime::{
-	traits::{Block as BlockT, Header as HeaderT},
-	generic::BlockId,
-	Justification,
-};
-use sp_blockchain::HeaderBackend;
+use sp_runtime::{traits::Block as BlockT, Justification};
 use client_api::backend::Backend as ClientBackend;
 use futures::prelude::*;
 use hash_db::Hasher;
 use transaction_pool::{BasicPool, txpool};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::marker::PhantomData;
 
 pub mod rpc;
 mod error;
-
+mod finalize_block;
+mod seal_new_block;
+use finalize_block::*;
+use seal_new_block::{seal_new_block, SealBlockParams};
 pub use error::Error;
 pub use rpc::{EngineCommand, CreatedBlock};
 
@@ -72,8 +70,6 @@ impl<B: BlockT, I: BlockImport<B>> BlockImport<B> for ManualSealBlockImport<I> {
 		block: BlockImportParams<B>,
 		cache: HashMap<CacheKeyId, Vec<u8>>,
 	) -> Result<ImportResult, Self::Error> {
-		// TODO: strip out post-digest.
-
 		self.inner.import_block(block, cache)
 	}
 }
@@ -144,110 +140,44 @@ pub async fn run_manual_seal<B, CB, E, A, C, S, H>(
 		match command {
 			EngineCommand::SealNewBlock {
 				create_empty,
+				finalize,
 				parent_hash,
 				sender,
 			} => {
-				if pool.status().ready == 0 && !create_empty {
-					rpc::send_result(sender, Err(Error::EmptyTransactionPool));
-					continue
-				}
-
-				// get the header to build this new block on.
-				// use the parent_hash supplied via `EngineCommand`
-				// or fetch the best_block.
-				let header = match parent_hash {
-					Some(hash) => {
-						back_end.blockchain().header(BlockId::Hash(hash))
-							.map_err(Error::from)
-							.and_then(|header| {
-								match header {
-									Some(header) => Ok(header),
-									None => Err(Error::BlockNotFound)
-								}
-							})
+				seal_new_block(
+					SealBlockParams {
+						sender,
+						parent_hash,
+						finalize,
+						create_empty,
+						env: &mut env,
+						select_chain: &select_chain,
+						block_import: &mut block_import,
+						inherent_data_provider: &inherent_data_providers,
+						pool: pool.clone(),
+						back_end: back_end.clone(),
+						_phantom: PhantomData,
 					}
-					None => select_chain.best_chain().map_err(Error::from)
-				};
-
-				let header = match header {
-					Err(e) => {
-						rpc::send_result(sender, Err(e));
-						continue
-					}
-					Ok(h) => h,
-				};
-
-				let mut proposer = match env.init(&header) {
-					Err(err) => {
-						rpc::send_result(sender, Err(Error::ProposerError(format!("{}", err))));
-						continue
-					}
-					Ok(p) => p,
-				};
-
-				let id = match inherent_data_providers.create_inherent_data() {
-					Err(err) => {
-						rpc::send_result(sender, Err(err.into()));
-						continue
-					}
-					Ok(id) => id,
-				};
-
-				let result = proposer.propose(
-					id,
-					Default::default(),
-					Duration::from_secs(5),
 				).await;
-
-				let (params, header) = match result {
-					Ok(block) => {
-						let (header, body) = block.deconstruct();
-						(BlockImportParams {
-							origin: BlockOrigin::Own,
-							header: header.clone(),
-							justification: None,
-							post_digests: Vec::new(),
-							body: Some(body),
-							finalized: false,
-							auxiliary: Vec::new(),
-							fork_choice: ForkChoiceStrategy::LongestChain,
-							allow_missing_state: false,
-							import_existing: false,
-						}, header)
-					}
-					Err(err) => {
-						rpc::send_result(sender, Err(Error::ProposerError(format!("{}", err))));
-						continue
-					}
-				};
-				match block_import.import_block(params, HashMap::new()) {
-					Ok(ImportResult::Imported(aux)) => {
-						rpc::send_result(sender, Ok(CreatedBlock { hash: <B as BlockT>::Header::hash(&header), aux }))
-					}
-					Ok(other) => rpc::send_result(sender, Err(other.into())),
-					Err(e) => {
-						log::warn!("Failed to import block: {:?}", e);
-						rpc::send_result(sender, Err(e.into()))
-					}
-				};
 			}
-			EngineCommand::FinalizeBlock { hash, sender } => {
-				// TODO(seun): Justification support?
-				match back_end.finalize_block(BlockId::Hash(hash), None) {
-					Err(e) => {
-						log::warn!("Failed to finalize block {:?}", e);
-						rpc::send_result(sender, Err(e.into()))
+			EngineCommand::FinalizeBlock { hash, sender, justification } => {
+				finalize_block(
+					FinalizeBlockParams {
+						hash,
+						sender,
+						justification,
+						back_end: back_end.clone(),
+						_phantom: PhantomData
 					}
-					Ok(()) => {
-						log::info!("Successfully finalized block: {}", hash);
-						rpc::send_result(sender, Ok(()))
-					}
-				}
+				)
 			}
 		}
 	}
 }
 
+/// runs the background authorship task for the instant seal engine.
+/// instant-seal creates a new block for every transaction imported into
+/// the transaction pool.
 pub async fn run_instant_seal<B, CB, H, E, A, C>(
 	block_import: BoxBlockImport<B>,
 	env: E,
@@ -272,6 +202,7 @@ pub async fn run_instant_seal<B, CB, H, E, A, C>(
 		.map(|_| {
 			EngineCommand::SealNewBlock {
 				create_empty: false,
+				finalize: false,
 				parent_hash: None,
 				sender: None,
 			}
@@ -297,6 +228,8 @@ mod tests {
 		txpool::Options,
 		testing::*,
 	};
+	use sp_runtime::generic::BlockId;
+	use sp_blockchain::HeaderBackend;
 	use consensus_common::ImportedAux;
 	use txpool_api::TransactionPool;
 	use client::LongestChain;
@@ -326,6 +259,7 @@ mod tests {
 				let sender = std::mem::replace(mut_sender, None);
 				EngineCommand::SealNewBlock {
 					create_empty: false,
+					finalize: true,
 					parent_hash: None,
 					sender
 				}
@@ -405,6 +339,7 @@ mod tests {
 			parent_hash: None,
 			sender: Some(tx),
 			create_empty: false,
+			finalize: false,
 		}).await.unwrap();
 		let created_block = rx.await.unwrap().unwrap();
 
@@ -428,10 +363,91 @@ mod tests {
 		let (tx, rx) = futures::channel::oneshot::channel();
 		sink.send(EngineCommand::FinalizeBlock {
 			sender: Some(tx),
-			hash: header.hash()
+			hash: header.hash(),
+			justification: None
 		}).await.unwrap();
 		// assert that the background task returns ok
 		assert_eq!(rx.await.unwrap().unwrap(), ());
 	}
-	// TODO: test with fork blocks
+
+	#[tokio::test]
+	async fn manual_seal_fork_blocks() {
+		let builder = test_client::TestClientBuilder::new();
+		let backend = builder.backend();
+		let client = Arc::new(builder.build());
+		let select_chain = LongestChain::new(backend.clone());
+		let inherent_data_providers = InherentDataProviders::new();
+		let pool = Arc::new(BasicPool::new(Options::default(), TestApi::default()));
+		let env = ProposerFactory {
+			transaction_pool: pool.clone(),
+			client: client.clone(),
+		};
+		// this test checks that blocks are created as soon as an engine command is sent over the stream.
+		let (mut sink, stream) = futures::channel::mpsc::channel(1024);
+		let future = run_manual_seal(
+			Box::new(client.clone()),
+			env,
+			backend.clone(),
+			pool.clone(),
+			stream,
+			select_chain,
+			inherent_data_providers,
+		);
+		std::thread::spawn(|| {
+			let mut rt = tokio::runtime::Runtime::new().unwrap();
+			// spawn the background authorship task
+			rt.block_on(future);
+		});
+		// submit a transaction to pool.
+		let result = pool.submit_one(&BlockId::Number(0), uxt(Alice, 209)).await;
+		// assert that it was successfully imported
+		assert!(result.is_ok());
+
+		let (tx, rx) = futures::channel::oneshot::channel();
+		sink.send(EngineCommand::SealNewBlock {
+			parent_hash: None,
+			sender: Some(tx),
+			create_empty: false,
+			finalize: false,
+		}).await.unwrap();
+		let created_block = rx.await.unwrap().unwrap();
+
+		// assert that the background task returns ok
+		assert_eq!(
+			created_block,
+			CreatedBlock {
+				hash: created_block.hash.clone(),
+				aux: ImportedAux {
+					header_only: false,
+					clear_justification_requests: false,
+					needs_justification: false,
+					bad_justification: false,
+					needs_finality_proof: false,
+					is_new_best: true
+				}
+			}
+		);
+		// assert that there's a new block in the db.
+		assert!(backend.blockchain().header(BlockId::Number(0)).unwrap().is_some());
+		assert!(pool.submit_one(&BlockId::Number(1), uxt(Alice, 210)).await.is_ok());
+
+		let (tx1, rx1) = futures::channel::oneshot::channel();
+		assert!(sink.send(EngineCommand::SealNewBlock {
+			parent_hash: Some(created_block.hash.clone()),
+			sender: Some(tx1),
+			create_empty: false,
+			finalize: false,
+		}).await.is_ok());
+		assert!(rx1.await.unwrap().is_ok());
+
+		assert!(pool.submit_one(&BlockId::Number(2), uxt(Alice, 211)).await.is_ok());
+		let (tx2, rx2) = futures::channel::oneshot::channel();
+		assert!(sink.send(EngineCommand::SealNewBlock {
+			parent_hash: Some(created_block.hash),
+			sender: Some(tx2),
+			create_empty: false,
+			finalize: false,
+		}).await.is_ok());
+		assert!(rx2.await.unwrap().is_err());
+	}
 }
