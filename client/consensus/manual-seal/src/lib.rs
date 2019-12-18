@@ -14,10 +14,10 @@
 // You should have received a copy of the GNU General Public License
 // along with Substrate.  If not, see <http://www.gnu.org/licenses/>.
 
-//! A manual sealing engine: the engine listens for rpc calls to seal blocks and create forks
+//! A manual sealing engine: the engine listens for rpc calls to seal blocks and create forks.
 //! This is suitable for a testing environment.
 
-use consensus_common::{
+use sp_consensus::{
 	self, BlockImport, Environment, Proposer, BlockCheckParams,
 	ForkChoiceStrategy, BlockImportParams, BlockOrigin,
 	ImportResult, SelectChain,
@@ -28,14 +28,14 @@ use consensus_common::{
 		BoxBlockImport,
 	},
 };
+use sp_inherents::InherentDataProviders;
 use sp_runtime::{traits::Block as BlockT, Justification};
-use client_api::backend::Backend as ClientBackend;
+use sc_client_api::backend::Backend as ClientBackend;
 use futures::prelude::*;
 use hash_db::Hasher;
-use transaction_pool::{BasicPool, txpool};
+use sc_transaction_pool::{BasicPool, txpool};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::marker::PhantomData;
 
 pub mod rpc;
 mod error;
@@ -121,7 +121,7 @@ pub async fn run_manual_seal<B, CB, E, A, C, S, H>(
 	basic_pool: Arc<BasicPool<A, B>>,
 	mut seal_block_channel: S,
 	select_chain: C,
-	inherent_data_providers: inherents::InherentDataProviders,
+	inherent_data_providers: InherentDataProviders,
 )
 	where
 		B: BlockT + 'static,
@@ -156,7 +156,6 @@ pub async fn run_manual_seal<B, CB, E, A, C, S, H>(
 						inherent_data_provider: &inherent_data_providers,
 						pool: pool.clone(),
 						back_end: back_end.clone(),
-						_phantom: PhantomData,
 					}
 				).await;
 			}
@@ -167,7 +166,6 @@ pub async fn run_manual_seal<B, CB, E, A, C, S, H>(
 						sender,
 						justification,
 						back_end: back_end.clone(),
-						_phantom: PhantomData
 					}
 				)
 			}
@@ -184,7 +182,7 @@ pub async fn run_instant_seal<B, CB, H, E, A, C>(
 	back_end: Arc<CB>,
 	basic_pool: Arc<BasicPool<A, B>>,
 	select_chain: C,
-	inherent_data_providers: inherents::InherentDataProviders,
+	inherent_data_providers: InherentDataProviders,
 )
 	where
 		A: txpool::ChainApi<Block=B, Hash=<B as BlockT>::Hash> + 'static,
@@ -222,24 +220,28 @@ pub async fn run_instant_seal<B, CB, H, E, A, C>(
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use test_client::{DefaultTestClientBuilderExt, TestClientBuilderExt, AccountKeyring::*};
-	use transaction_pool::{
+	use substrate_test_runtime_client::{
+		DefaultTestClientBuilderExt,
+		TestClientBuilderExt,
+		AccountKeyring::*,
+		TestClientBuilder,
+	};
+	use sc_transaction_pool::{
 		BasicPool,
 		txpool::Options,
 		testing::*,
 	};
+	use sp_transaction_pool::TransactionPool;
 	use sp_runtime::generic::BlockId;
 	use sp_blockchain::HeaderBackend;
-	use consensus_common::ImportedAux;
-	use txpool_api::TransactionPool;
-	use client::LongestChain;
-	use inherents::InherentDataProviders;
-	use test_client;
-	use basic_authorship::ProposerFactory;
+	use sp_consensus::ImportedAux;
+	use sc_client::LongestChain;
+	use sp_inherents::InherentDataProviders;
+	use sc_basic_authority::ProposerFactory;
 
 	#[tokio::test]
 	async fn instant_seal() {
-		let builder = test_client::TestClientBuilder::new();
+		let builder = TestClientBuilder::new();
 		let backend = builder.backend();
 		let client = Arc::new(builder.build());
 		let select_chain = LongestChain::new(backend.clone());
@@ -304,7 +306,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn manual_seal_and_finalization() {
-		let builder = test_client::TestClientBuilder::new();
+		let builder = TestClientBuilder::new();
 		let backend = builder.backend();
 		let client = Arc::new(builder.build());
 		let select_chain = LongestChain::new(backend.clone());
@@ -372,7 +374,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn manual_seal_fork_blocks() {
-		let builder = test_client::TestClientBuilder::new();
+		let builder = TestClientBuilder::new();
 		let backend = builder.backend();
 		let client = Arc::new(builder.build());
 		let select_chain = LongestChain::new(backend.clone());

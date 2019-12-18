@@ -18,7 +18,7 @@
 use super::*;
 use codec::Encode;
 use txpool::{self, Pool};
-use test_client::{
+use substrate_test_runtime_client::{
 	runtime::{AccountId, Index, Transfer, Extrinsic, Block, Hash},
 	AccountKeyring
 };

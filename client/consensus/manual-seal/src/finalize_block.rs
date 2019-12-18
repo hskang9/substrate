@@ -22,15 +22,12 @@ use sp_runtime::{
 	traits::Block as BlockT,
 	generic::BlockId,
 };
-use std::{
-	sync::Arc,
-	marker::PhantomData
-};
+use std::sync::Arc;
 use hash_db::Hasher;
-use client_api::backend::Backend as ClientBackend;
+use sc_client_api::backend::Backend as ClientBackend;
 
 /// params for block finalization.
-pub struct FinalizeBlockParams<B: BlockT, H, CB> {
+pub struct FinalizeBlockParams<B: BlockT, CB> {
 	/// hash of the block
 	pub hash: <B as BlockT>::Hash,
 	/// sender to report errors/success to the rpc.
@@ -39,12 +36,10 @@ pub struct FinalizeBlockParams<B: BlockT, H, CB> {
 	pub justification: Option<Justification>,
 	/// client backend
 	pub back_end: Arc<CB>,
-	/// phantom data to pin the hasher type.
-	pub _phantom: PhantomData<H>
 }
 
 /// finalizes a block in the backend with the given params.
-pub fn finalize_block<B, H, CB>(params: FinalizeBlockParams<B, H, CB>)
+pub fn finalize_block<B, H, CB>(params: FinalizeBlockParams<B, CB>)
 	where
 		B: BlockT,
 		H: Hasher<Out=<B as BlockT>::Hash>,

@@ -19,7 +19,7 @@ use super::*;
 
 use futures::executor::block_on;
 use txpool::{self, Pool};
-use test_client::{runtime::Index, AccountKeyring::*};
+use substrate_test_runtime_client::{runtime::Index, AccountKeyring::*};
 use sp_runtime::{
 	generic::BlockId,
 	transaction_validity::ValidTransaction,

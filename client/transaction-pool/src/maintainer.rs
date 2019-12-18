@@ -355,7 +355,7 @@ mod tests {
 	use super::*;
 	use futures::executor::block_on;
 	use codec::Encode;
-	use test_client::{prelude::*, runtime::{Block, Transfer}, sp_consensus::{BlockOrigin, SelectChain}};
+	use substrate_test_runtime_client::{prelude::*, runtime::{Block, Transfer}, sp_consensus::{BlockOrigin, SelectChain}};
 	use sp_transaction_pool::PoolStatus;
 	use crate::api::{FullChainApi, LightChainApi};
 
@@ -401,7 +401,7 @@ mod tests {
 			to: Default::default(),
 		}.into_signed_tx();
 		let fetcher_transaction = transaction.clone();
-		let fetcher = Arc::new(test_client::new_light_fetcher()
+		let fetcher = Arc::new(substrate_test_runtime_client::new_light_fetcher()
 			.with_remote_body(Some(Box::new(move |_| Ok(vec![fetcher_transaction.clone()]))))
 			.with_remote_call(Some(Box::new(move |_| {
 				let validity: sp_runtime::transaction_validity::TransactionValidity =
@@ -473,7 +473,7 @@ mod tests {
 
 		let build_fetcher = || {
 			let validated = Arc::new(atomic::AtomicBool::new(false));
-			Arc::new(test_client::new_light_fetcher()
+			Arc::new(substrate_test_runtime_client::new_light_fetcher()
 				.with_remote_body(Some(Box::new(move |_| Ok(vec![]))))
 				.with_remote_call(Some(Box::new(move |_| {
 					let is_inserted = validated.swap(true, atomic::Ordering::SeqCst);

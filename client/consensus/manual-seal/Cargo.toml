@@ -2,7 +2,7 @@
 name = "sc-consensus-manual-seal"
 version = "2.0.0"
 authors = ["Parity Technologies <admin@parity.io>"]
-description = "Instant sealing engine for Substrate"
+description = "Manual sealing engine for Substrate"
 edition = "2018"
 
 [dependencies]
@@ -21,35 +21,23 @@ jsonrpc-core = "14.0.5"
 jsonrpc-core-client = "14.0.5"
 jsonrpc-derive = "14.0.5"
 
-app-crypto = { package = "sp-application-crypto", path = "../../../primitives/application-crypto" }
-runtime-support = { package = "frame-support", path = "../../../frame/support" }
-runtime-version = { package = "sp-version", path = "../../../primitives/version" }
-runtime-io = { package = "sp-io", path = "../../../primitives/io" }
-inherents = { package = "sp-inherents", path = "../../../primitives/inherents" }
-sc-telemetry = { path = "../../telemetry" }
-keystore = { package = "sc-keystore", path = "../../keystore" }
-client = { package = "sc-client", path = "../../../client" }
-client-api = { package = "sc-client-api", path = "../../../client/api" }
+sp-inherents = { path = "../../../primitives/inherents" }
+sc-client = { path = "../../../client" }
+sc-client-api = { path = "../../../client/api" }
 sp-api = { path = "../../../primitives/api" }
-basic-authorship = { package = "sc-basic-authority", path = "../../../client/basic-authorship" }
+sc-basic-authority = { path = "../../../client/basic-authorship" }
 sp-blockchain = { path = "../../../primitives/blockchain" }
-block-builder-api = { package = "sp-block-builder", path = "../../../primitives/block-builder" }
-consensus-common = { package = "sp-consensus", path = "../../../primitives/consensus/common" }
-slots = { package = "sc-consensus-slots", path = "../../consensus/slots"  }
+sp-block-builder = { path = "../../../primitives/block-builder" }
+sp-consensus = { package = "sp-consensus", path = "../../../primitives/consensus/common" }
 sp-runtime = {  path = "../../../primitives/runtime" }
 fork-tree = { path = "../../../utils/fork-tree" }
-transaction-pool = { package = "sc-transaction-pool", path = "../../transaction-pool", features = ["test-helpers"] }
-txpool-api = { package = "sp-transaction-pool", path = "../../../primitives/transaction-pool" }
+sp-transaction-pool = { path = "../../../primitives/transaction-pool" }
+sc-transaction-pool = { path = "../../transaction-pool", features = ["test-helpers"] }
 serde = { version = "1.0", features=["derive"] }
 primitives = { package = "sp-core",  path = "../../../primitives/core" }
 
 [dev-dependencies]
-keyring = { package = "sp-keyring", path = "../../../primitives/keyring" }
-sc-executor = { path = "../../executor" }
-network = { package = "sc-network", path = "../../network", features = ["test-helpers"]}
-service = { package = "sc-service", path = "../../service" }
-test-client = { package = "substrate-test-runtime-client", path = "../../../test-utils/runtime/client" }
-block-builder = { package = "sc-block-builder", path = "../../block-builder" }
+substrate-test-runtime-client = { path = "../../../test-utils/runtime/client" }
 tokio = { version = "0.2", features = ["rt-core", "macros"] }
 env_logger = "0.7.0"
 tempfile = "3.1.0"

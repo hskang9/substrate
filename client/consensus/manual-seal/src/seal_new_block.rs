@@ -22,24 +22,24 @@ use sp_runtime::{
 	traits::{Block as BlockT, Header as HeaderT},
 	generic::BlockId,
 };
-use transaction_pool::txpool;
+use sc_transaction_pool::txpool;
 use rpc::CreatedBlock;
 
-use consensus_common::{
+use sp_consensus::{
 	self, BlockImport, Environment, Proposer,
 	ForkChoiceStrategy, BlockImportParams, BlockOrigin,
 	ImportResult, SelectChain,
 	import_queue::BoxBlockImport,
 };
 use sp_blockchain::HeaderBackend;
-use client_api::backend::Backend as ClientBackend;
+use sc_client_api::backend::Backend as ClientBackend;
 use hash_db::Hasher;
 use std::collections::HashMap;
 use std::time::Duration;
-use std::marker::PhantomData;
+use sp_inherents::InherentDataProviders;
 
 /// params for sealing a new block
-pub struct SealBlockParams<'a, B: BlockT, C, CB, E, P: txpool::ChainApi, H> {
+pub struct SealBlockParams<'a, B: BlockT, C, CB, E, P: txpool::ChainApi> {
 	/// if true, empty blocks(without extrinsics) will be created.
 	/// otherwise, will return Error::EmptyTransactionPool.
 	pub create_empty: bool,
@@ -60,13 +60,11 @@ pub struct SealBlockParams<'a, B: BlockT, C, CB, E, P: txpool::ChainApi, H> {
 	/// block import object
 	pub block_import: &'a mut BoxBlockImport<B>,
 	/// inherent data provide
-	pub inherent_data_provider: &'a inherents::InherentDataProviders,
-	/// phantom data to pin the hasher type.
-	pub _phantom: PhantomData<H>
+	pub inherent_data_provider: &'a InherentDataProviders,
 }
 
 /// seals a new block with the given params
-pub async fn seal_new_block<B, C, CB, E, P, H>(params: SealBlockParams<'_, B, C, CB, E, P, H>)
+pub async fn seal_new_block<B, C, CB, E, P, H>(params: SealBlockParams<'_, B, C, CB, E, P>)
 	where
 		B: BlockT,
 		H: Hasher<Out=<B as BlockT>::Hash>,
@@ -105,7 +103,7 @@ pub async fn seal_new_block<B, C, CB, E, P, H>(params: SealBlockParams<'_, B, C,
 				.and_then(|header| {
 					match header {
 						Some(header) => Ok(header),
-						None => Err(Error::BlockNotFound)
+						None => Err(Error::BlockNotFound(format!("{}", hash)))
 					}
 				})
 		}

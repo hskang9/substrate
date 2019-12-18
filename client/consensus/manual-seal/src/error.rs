@@ -17,9 +17,9 @@
 //! A manual sealing engine: the engine listens for rpc calls to seal blocks and create forks
 //! This is suitable for a testing environment.
 use derive_more::{Display, From};
-use consensus_common::{Error as ConsensusError, ImportResult};
+use sp_consensus::{Error as ConsensusError, ImportResult};
 use sp_blockchain::Error as BlockchainError;
-use inherents::Error as InherentsError;
+use sp_inherents::Error as InherentsError;
 
 /// errors encountered by background block authorship task
 #[derive(Display, Debug, From)]
@@ -44,8 +44,9 @@ pub enum Error {
 	#[display(fmt = "Finalization Error: {}", _0)]
 	BlockchainError(BlockchainError),
 	/// Supplied parent_hash doesn't exist in chain
-	#[display(fmt = "Supplied parent_hash doesn't exist in chain")]
-	BlockNotFound,
+	#[display(fmt = "Supplied parent_hash: {} doesn't exist in chain", _0)]
+	#[from(ignore)]
+	BlockNotFound(String),
 	/// Some other error.
 	#[display(fmt="Other error: {}", _0)]
 	Other(Box<dyn std::error::Error + Send>),

@@ -15,7 +15,7 @@
 // along with Substrate.  If not, see <http://www.gnu.org/licenses/>.
 
 //! RPC interface for the ManualSeal Engine.
-use consensus_common::ImportedAux;
+use sp_consensus::ImportedAux;
 use jsonrpc_core::{Error, ErrorCode};
 use jsonrpc_derive::rpc;
 use futures::{
@@ -28,6 +28,8 @@ use futures::{
 };
 use serde::{Deserialize, Serialize};
 use sp_runtime::Justification;
+
+const SERVER_SHUTTING_DOWN: i64 = -54321;
 
 /// Future's type for jsonrpc
 type FutureResult<T> = Box<dyn jsonrpc_core::futures::Future<Item = T, Error = Error> + Send>;
@@ -60,7 +62,7 @@ pub enum EngineCommand<Hash> {
 		/// sender to report errors/success to the rpc.
 		sender: Sender<()>,
 		/// finalization justification
-		justification: Option<Justification>
+		justification: Option<Justification>,
 	}
 }
 
@@ -82,7 +84,7 @@ pub trait ManualSealApi<Hash> {
 		&self,
 		hash: Hash,
 		justification: Option<Justification>
-	) -> FutureResult<()>;
+	) -> FutureResult<bool>;
 }
 
 /// A struct that implements the [`ManualSealApi`].
@@ -132,7 +134,7 @@ impl<Hash: Send + 'static> ManualSealApi<Hash> for ManualSeal<Hash> {
 				// error from the authorship task
 				Ok(Err(e)) => {
 					Err(Error {
-						code: ErrorCode::ServerError(500),
+						code: ErrorCode::ServerError(SERVER_SHUTTING_DOWN),
 						message: format!("{}", e),
 						data: None,
 					})
@@ -140,7 +142,7 @@ impl<Hash: Send + 'static> ManualSealApi<Hash> for ManualSeal<Hash> {
 				// channel has been dropped
 				Err(_) => {
 					Err(Error {
-						code: ErrorCode::ServerError(500),
+						code: ErrorCode::ServerError(SERVER_SHUTTING_DOWN),
 						message: "Consensus process is terminating".into(),
 						data: None,
 					})
@@ -151,7 +153,7 @@ impl<Hash: Send + 'static> ManualSealApi<Hash> for ManualSeal<Hash> {
 		Box::new(Box::pin(future).compat())
 	}
 
-	fn finalize_block(&self, hash: Hash, justification: Option<Justification>) -> FutureResult<()> {
+	fn finalize_block(&self, hash: Hash, justification: Option<Justification>) -> FutureResult<bool> {
 		let mut sink = self.import_block_channel.clone();
 		let future = async move {
 			let (sender, receiver) = oneshot::channel();
@@ -162,11 +164,11 @@ impl<Hash: Send + 'static> ManualSealApi<Hash> for ManualSeal<Hash> {
 
 			match receiver.await {
 				// all good
-				Ok(Ok(())) => Ok(()),
+				Ok(Ok(())) => Ok(true),
 				// error from the authorship task
 				Ok(Err(e)) => {
 					Err(Error {
-						code: ErrorCode::ServerError(500),
+						code: ErrorCode::ServerError(SERVER_SHUTTING_DOWN),
 						message: format!("{}", e),
 						data: None
 					})
@@ -174,7 +176,7 @@ impl<Hash: Send + 'static> ManualSealApi<Hash> for ManualSeal<Hash> {
 				// channel has been dropped
 				Err(_) => {
 					Err(Error {
-						code: ErrorCode::ServerError(500),
+						code: ErrorCode::ServerError(SERVER_SHUTTING_DOWN),
 						message: "Consensus process is terminating".into(),
 						data: None
 					})
@@ -193,7 +195,7 @@ fn map_error(error: SendError) -> Error {
 	}
 
 	Error {
-		code: ErrorCode::ServerError(500),
+		code: ErrorCode::ServerError(SERVER_SHUTTING_DOWN),
 		message: "Consensus process is terminating".into(),
 		data: None
 	}
@@ -206,7 +208,8 @@ pub fn send_result<T: std::fmt::Debug>(
 	result: std::result::Result<T, crate::Error>
 ) {
 	sender.map(|sender| {
-		sender.send(result)
-			.expect("receiving end isn't dropped until it receives a message; qed")
+		if let Err(err) = sender.send(result) {
+			log::warn!("Server is shutting down: {:?}", err)
+		}
 	});
 }
