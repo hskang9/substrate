@@ -41,7 +41,7 @@ pub mod rpc;
 mod error;
 mod finalize_block;
 mod seal_new_block;
-use finalize_block::*;
+use finalize_block::{finalize_block, FinalizeBlockParams};
 use seal_new_block::{seal_new_block, SealBlockParams};
 pub use error::Error;
 pub use rpc::{EngineCommand, CreatedBlock};

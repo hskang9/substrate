@@ -38,20 +38,34 @@ use std::collections::HashMap;
 use std::time::Duration;
 use std::marker::PhantomData;
 
+/// params for sealing a new block
 pub struct SealBlockParams<'a, B: BlockT, C, CB, E, P: txpool::ChainApi, H> {
+	/// if true, empty blocks(without extrinsics) will be created.
+	/// otherwise, will return Error::EmptyTransactionPool.
 	pub create_empty: bool,
+	/// instantly finalize this block?
 	pub finalize: bool,
+	/// specify the parent hash of the about-to-created block
 	pub parent_hash: Option<<B as BlockT>::Hash>,
+	/// sender to report errors/success to the rpc.
 	pub sender: rpc::Sender<CreatedBlock<<B as BlockT>::Hash>>,
+	/// transaction pool
 	pub pool: Arc<txpool::Pool<P>>,
+	/// client backend
 	pub back_end: Arc<CB>,
+	/// Environment trait object for creating a proposer
 	pub env: &'a mut E,
+	/// SelectChain object
 	pub select_chain: &'a C,
+	/// block import object
 	pub block_import: &'a mut BoxBlockImport<B>,
+	/// inherent data provide
 	pub inherent_data_provider: &'a inherents::InherentDataProviders,
+	/// phantom data to pin the hasher type.
 	pub _phantom: PhantomData<H>
 }
 
+/// seals a new block with the given params
 pub async fn seal_new_block<B, C, CB, E, P, H>(params: SealBlockParams<'_, B, C, CB, E, P, H>)
 	where
 		B: BlockT,

@@ -29,14 +29,21 @@ use std::{
 use hash_db::Hasher;
 use client_api::backend::Backend as ClientBackend;
 
+/// params for block finalization.
 pub struct FinalizeBlockParams<B: BlockT, H, CB> {
+	/// hash of the block
 	pub hash: <B as BlockT>::Hash,
+	/// sender to report errors/success to the rpc.
 	pub sender: rpc::Sender<()>,
+	/// finalization justification
 	pub justification: Option<Justification>,
+	/// client backend
 	pub back_end: Arc<CB>,
+	/// phantom data to pin the hasher type.
 	pub _phantom: PhantomData<H>
 }
 
+/// finalizes a block in the backend with the given params.
 pub fn finalize_block<B, H, CB>(params: FinalizeBlockParams<B, H, CB>)
 	where
 		B: BlockT,

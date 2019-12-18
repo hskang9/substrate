@@ -29,7 +29,9 @@ use futures::{
 use serde::{Deserialize, Serialize};
 use sp_runtime::Justification;
 
+/// Future's type for jsonrpc
 type FutureResult<T> = Box<dyn jsonrpc_core::futures::Future<Item = T, Error = Error> + Send>;
+/// sender passed to the authorship task to report errors or successes.
 pub type Sender<T> = Option<oneshot::Sender<std::result::Result<T, crate::Error>>>;
 
 /// message sent by rpc to the background authorship task
@@ -41,15 +43,23 @@ pub enum EngineCommand<Hash> {
 	///
 	/// if finalize == true, the block will be instantly finalized.
 	SealNewBlock {
+		/// if true, empty blocks(without extrinsics) will be created.
+		/// otherwise, will return Error::EmptyTransactionPool.
 		create_empty: bool,
+		/// instantly finalize this block?
 		finalize: bool,
+		/// specify the parent hash of the about-to-created block
 		parent_hash: Option<Hash>,
+		/// sender to report errors/success to the rpc.
 		sender: Sender<CreatedBlock<Hash>>,
 	},
 	/// Tells the engine to finalize the block with the supplied hash
 	FinalizeBlock {
+		/// hash of the block
 		hash: Hash,
+		/// sender to report errors/success to the rpc.
 		sender: Sender<()>,
+		/// finalization justification
 		justification: Option<Justification>
 	}
 }
@@ -132,8 +142,7 @@ impl<Hash: Send + 'static> ManualSealApi<Hash> for ManualSeal<Hash> {
 					Err(Error {
 						code: ErrorCode::ServerError(500),
 						message: "Consensus process is terminating".into(),
-						data: None,erver is shutting down
-erver is shutting down
+						data: None,
 					})
 				}
 			}
@@ -177,6 +186,7 @@ erver is shutting down
 	}
 }
 
+/// convert a futures::mpsc::SendError to jsonrpc::Error
 fn map_error(error: SendError) -> Error {
 	if error.is_disconnected() {
 		log::warn!("Received sealing request but Manual Sealing task has been dropped");
@@ -189,6 +199,8 @@ fn map_error(error: SendError) -> Error {
 	}
 }
 
+/// report any errors or successes encountered by the authorship task back
+/// to the rpc
 pub fn send_result<T: std::fmt::Debug>(
 	sender: Sender<T>,
 	result: std::result::Result<T, crate::Error>
