@@ -5781,7 +5781,6 @@ dependencies = [
  "sp-api 2.0.0",
  "sp-blockchain 2.0.0",
  "sp-core 2.0.0",
- "sp-keyring 2.0.0",
  "sp-runtime 2.0.0",
  "sp-transaction-pool 2.0.0",
  "substrate-test-runtime-client 2.0.0",

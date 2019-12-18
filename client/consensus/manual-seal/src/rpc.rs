@@ -28,6 +28,7 @@ use futures::{
 };
 use serde::{Deserialize, Serialize};
 use sp_runtime::Justification;
+pub use self::gen_client::Client as ManualSealClient;
 
 const SERVER_SHUTTING_DOWN: i64 = -54321;
 
