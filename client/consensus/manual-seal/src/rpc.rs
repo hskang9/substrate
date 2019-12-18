@@ -34,7 +34,7 @@ type FutureResult<T> = Box<dyn jsonrpc_core::futures::Future<Item = T, Error = E
 /// sender passed to the authorship task to report errors or successes.
 pub type Sender<T> = Option<oneshot::Sender<std::result::Result<T, crate::Error>>>;
 
-/// message sent by rpc to the background authorship task
+/// Message sent to the background authorship task, usually by RPC.
 pub enum EngineCommand<Hash> {
 	/// Tells the engine to propose a new block
 	///
