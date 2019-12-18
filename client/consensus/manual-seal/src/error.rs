@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Substrate.  If not, see <http://www.gnu.org/licenses/>.
 
-//! A manual sealing engine: the engine listens for rpc calls to seal blocks and create forks
+//! A manual sealing engine: the engine listens for rpc calls to seal blocks and create forks.
 //! This is suitable for a testing environment.
 use derive_more::{Display, From};
 use sp_consensus::{Error as ConsensusError, ImportResult};
